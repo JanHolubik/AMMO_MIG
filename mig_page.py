@@ -9,6 +9,163 @@ from mig_core import (
     apply_mig_output_to_csv,
 )
 
+
+def get_mig_filter_config() -> dict[str, list[str]]:
+    return {
+        "filteringProperty:Použití - štětec": [
+            "Base (základní nátěr)",
+            "Layer (vrstvení)",
+            "Detail",
+            "Drybrush",
+            "Wash / Shade",
+            "Weathering",
+            "Univerzální",
+        ],
+        "filteringProperty:Tvar štětce": [
+            "Kulatý (Round)",
+            "Plochý (Flat)",
+            "Drybrush (plochý tupý)",
+            "Fan (vějíř)",
+            "Speciální (gumový, silikonový)",
+        ],
+        "filteringProperty:Typ štětin": [
+            "Syntetický",
+            "Přírodní (Kolinsky)",
+        ],
+        "filteringProperty:Velikost štětců": [
+            "000",
+            "00",
+            "0",
+            "1",
+            "2",
+            "3",
+            "XL (drybrush velké)",
+        ],
+    }
+
+
+def build_mig_filters_prompt_text(product_name: str, product_ean: str, product_code: str) -> str:
+    config = get_mig_filter_config()
+
+    lines = []
+    lines.append("[FILTERS]")
+    lines.append("")
+    lines.append("Použij pouze přesné hodnoty z povoleného seznamu.")
+    lines.append("Vyplň všechny filtry, které lze z produktu bezpečně určit.")
+    lines.append("Pokud si nejsi jistý jen u konkrétního pole, nech prázdné pouze to pole.")
+    lines.append("Nikdy nevymýšlej vlastní variantu.")
+    lines.append("")
+    lines.append("Pokud má filtr více hodnot, odděl je středníkem bez mezer navíc.")
+    lines.append("Příklad:")
+    lines.append("Base (základní nátěr);Detail")
+    lines.append("")
+    lines.append("Tvar štětce, Typ štětin a Velikost vracej jen pokud jsou bezpečně určitelné.")
+    lines.append("")
+
+    for key, values in config.items():
+        lines.append(key)
+        for value in values:
+            lines.append(f"- {value}")
+        lines.append("")
+
+    lines.append("VRAŤ POUZE TENTO BLOK VE FORMÁTU key=value:")
+    lines.append("")
+
+    for key in config.keys():
+        lines.append(f"{key}=")
+
+    lines.append("")
+    lines.append("--------------------------------------------------")
+    lines.append("PRODUKT")
+    lines.append(product_name or "")
+    lines.append("")
+    lines.append("EAN")
+    lines.append(product_ean or "")
+    lines.append("")
+    lines.append("CODE")
+    lines.append(product_code or "")
+    lines.append("--------------------------------------------------")
+
+    return "\n".join(lines)
+
+
+def parse_filters_from_text(text: str) -> dict[str, str]:
+    parsed: dict[str, str] = {}
+
+    for raw_line in str(text or "").splitlines():
+        line = raw_line.strip()
+        if not line.startswith("filteringProperty:"):
+            continue
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        parsed[key.strip()] = value.strip()
+
+    return parsed
+
+
+def validate_and_normalize_mig_filters(parsed_filters: dict[str, str]) -> dict[str, str]:
+    config = get_mig_filter_config()
+    result = {key: "" for key in config.keys()}
+
+    for key, value in parsed_filters.items():
+        if key not in config:
+            continue
+
+        if not value:
+            result[key] = ""
+            continue
+
+        values = [v.strip() for v in value.split(";") if v.strip()]
+        valid_values = [v for v in values if v in config[key]]
+        result[key] = ";".join(valid_values) if valid_values else ""
+
+    return result
+
+
+def enrich_mig_csv_with_filters(df: pd.DataFrame, filters_text: str, row_index: int) -> pd.DataFrame:
+    df_out = df.copy()
+
+    parsed_filters = parse_filters_from_text(filters_text)
+    validated_filters = validate_and_normalize_mig_filters(parsed_filters)
+
+    for key, value in validated_filters.items():
+        if key not in df_out.columns:
+            df_out[key] = ""
+        df_out.at[row_index, key] = value
+
+    return df_out
+
+
+def render_mig_page():
+    st.title("MIG AMMO")
+
+    if "mig_generated_filters_prompt_text" not in st.session_state:
+        st.session_state["mig_generated_filters_prompt_text"] = ""
+
+    if "mig_generated_filters_prompt_type" not in st.session_state:
+        st.session_state["mig_generated_filters_prompt_type"] = ""
+
+    tab1, tab2 = st.tabs(["Barvy", "Štětce / Příslušenství"])
+
+    with tab1:
+        render_mig_section(
+            product_type_label="MIG Barvy",
+            prompt_type="mig_paints",
+            item_type="product",
+            show_filters=False,
+        )
+
+    with tab2:
+        render_mig_section(
+            product_type_label="MIG Štětce / Příslušenství",
+            prompt_type="mig_tools",
+            item_type="product",
+            show_filters=True,
+        )
+
+
 def render_mig_section(
     product_type_label: str,
     prompt_type: str,
@@ -60,7 +217,7 @@ def render_mig_section(
             if not name or not code:
                 st.warning("Vyplň alespoň název produktu a code.")
             else:
-                df = create_mig_card_row(
+                df_create = create_mig_card_row(
                     name=name,
                     code=code,
                     ean=ean,
@@ -70,7 +227,7 @@ def render_mig_section(
                     description=description,
                 )
 
-                csv_bytes = df.to_csv(index=False, sep=";").encode("utf-8-sig")
+                csv_bytes = df_create.to_csv(index=False, sep=";").encode("utf-8-sig")
 
                 st.download_button(
                     "Stáhnout CREATE CSV",
