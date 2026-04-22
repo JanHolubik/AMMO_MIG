@@ -1,3 +1,14 @@
+import json
+import pandas as pd
+import streamlit as st
+
+from mig_core import (
+    create_mig_card_row,
+    build_mig_prompt,
+    make_docx_bytes,
+    apply_mig_output_to_csv,
+)
+
 def render_mig_section(
     product_type_label: str,
     prompt_type: str,
