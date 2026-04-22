@@ -1,171 +1,3 @@
-import json
-import pandas as pd
-import streamlit as st
-
-from mig_core import (
-    create_mig_card_row,
-    build_mig_prompt,
-    make_docx_bytes,
-    apply_mig_output_to_csv,
-)
-
-
-def get_mig_filter_config() -> dict[str, list[str]]:
-    return {
-        "filteringProperty:Použití - štětec": [
-            "Base (základní nátěr)",
-            "Layer (vrstvení)",
-            "Detail",
-            "Drybrush",
-            "Wash / Shade",
-            "Weathering",
-            "Univerzální",
-        ],
-        "filteringProperty:Tvar štětce": [
-            "Kulatý (Round)",
-            "Plochý (Flat)",
-            "Drybrush (plochý tupý)",
-            "Fan (vějíř)",
-            "Speciální (gumový, silikonový)",
-        ],
-        "filteringProperty:Typ štětin": [
-            "Syntetický",
-            "Přírodní (Kolinsky)",
-        ],
-        "filteringProperty:Velikost štětců": [
-            "000",
-            "00",
-            "0",
-            "1",
-            "2",
-            "3",
-            "XL (drybrush velké)",
-        ],
-    }
-
-
-def build_mig_filters_prompt_text(product_name: str, product_ean: str, product_code: str) -> str:
-    config = get_mig_filter_config()
-
-    lines = []
-    lines.append("[FILTERS]")
-    lines.append("")
-    lines.append("Použij pouze přesné hodnoty z povoleného seznamu.")
-    lines.append("Vyplň všechny filtry, které lze z produktu bezpečně určit.")
-    lines.append("Pokud si nejsi jistý jen u konkrétního pole, nech prázdné pouze to pole.")
-    lines.append("Nikdy nevymýšlej vlastní variantu.")
-    lines.append("")
-    lines.append("Pokud má filtr více hodnot, odděl je středníkem bez mezer navíc.")
-    lines.append("Příklad:")
-    lines.append("Base (základní nátěr);Detail")
-    lines.append("")
-    lines.append("Tvar štětce, Typ štětin a Velikost vracej jen pokud jsou bezpečně určitelné.")
-    lines.append("")
-
-    for key, values in config.items():
-        lines.append(key)
-        for value in values:
-            lines.append(f"- {value}")
-        lines.append("")
-
-    lines.append("VRAŤ POUZE TENTO BLOK VE FORMÁTU key=value:")
-    lines.append("")
-
-    for key in config.keys():
-        lines.append(f"{key}=")
-
-    lines.append("")
-    lines.append("--------------------------------------------------")
-    lines.append("PRODUKT")
-    lines.append(product_name or "")
-    lines.append("")
-    lines.append("EAN")
-    lines.append(product_ean or "")
-    lines.append("")
-    lines.append("CODE")
-    lines.append(product_code or "")
-    lines.append("--------------------------------------------------")
-
-    return "\n".join(lines)
-
-
-def parse_filters_from_text(text: str) -> dict[str, str]:
-    parsed: dict[str, str] = {}
-
-    for raw_line in str(text or "").splitlines():
-        line = raw_line.strip()
-        if not line.startswith("filteringProperty:"):
-            continue
-        if "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        parsed[key.strip()] = value.strip()
-
-    return parsed
-
-
-def validate_and_normalize_mig_filters(parsed_filters: dict[str, str]) -> dict[str, str]:
-    config = get_mig_filter_config()
-    result = {key: "" for key in config.keys()}
-
-    for key, value in parsed_filters.items():
-        if key not in config:
-            continue
-
-        if not value:
-            result[key] = ""
-            continue
-
-        values = [v.strip() for v in value.split(";") if v.strip()]
-        valid_values = [v for v in values if v in config[key]]
-        result[key] = ";".join(valid_values) if valid_values else ""
-
-    return result
-
-
-def enrich_mig_csv_with_filters(df: pd.DataFrame, filters_text: str, row_index: int) -> pd.DataFrame:
-    df_out = df.copy()
-
-    parsed_filters = parse_filters_from_text(filters_text)
-    validated_filters = validate_and_normalize_mig_filters(parsed_filters)
-
-    for key, value in validated_filters.items():
-        if key not in df_out.columns:
-            df_out[key] = ""
-        df_out.at[row_index, key] = value
-
-    return df_out
-
-
-def render_mig_page():
-    st.title("MIG AMMO")
-
-    if "mig_generated_filters_prompt_text" not in st.session_state:
-        st.session_state["mig_generated_filters_prompt_text"] = ""
-
-    if "mig_generated_filters_prompt_type" not in st.session_state:
-        st.session_state["mig_generated_filters_prompt_type"] = ""
-
-    tab1, tab2 = st.tabs(["Barvy", "Štětce / Příslušenství"])
-
-    with tab1:
-        render_mig_section(
-            product_type_label="MIG Barvy",
-            prompt_type="mig_paints",
-            item_type="product",
-            show_filters=False,
-        )
-
-    with tab2:
-        render_mig_section(
-            product_type_label="MIG Štětce / Příslušenství",
-            prompt_type="mig_tools",
-            item_type="product",
-            show_filters=True,
-        )
-
-
 def render_mig_section(
     product_type_label: str,
     prompt_type: str,
@@ -293,14 +125,23 @@ def render_mig_section(
             if not product_name:
                 st.warning("Nejdřív nahraj CSV a vyber produkt.")
             else:
-                for lang in ("cs", "en", "sk"):
-                    st.session_state[f"mig_generated_prompt_text_{prompt_type}_{lang}"] = build_mig_prompt(
-                        prompt_type=prompt_type,
-                        product_name=product_name,
-                        product_ean=product_ean,
-                        product_code=product_code,
-                        lang=lang,
-                    )
+                try:
+                    for lang in ("cs", "en", "sk"):
+                        generated_prompt = build_mig_prompt(
+                            prompt_type=prompt_type,
+                            product_name=product_name,
+                            product_ean=product_ean,
+                            product_code=product_code,
+                            lang=lang,
+                        )
+
+                        st.session_state[f"mig_generated_prompt_text_{prompt_type}_{lang}"] = generated_prompt
+                        st.session_state[f"{prompt_type}_prompt_preview_{lang}"] = generated_prompt
+
+                    st.success("Prompty byly vygenerovány.")
+
+                except Exception as e:
+                    st.error(f"Nepodařilo se vygenerovat prompty: {e}")
 
         lang_labels = {
             "cs": "Čeština",
@@ -315,17 +156,19 @@ def render_mig_section(
             with col:
                 st.markdown(f"### {lang_labels[lang]}")
 
-                prompt_text = st.session_state.get(
-                    f"mig_generated_prompt_text_{prompt_type}_{lang}",
-                    "",
-                )
+                preview_key = f"{prompt_type}_prompt_preview_{lang}"
+                generated_key = f"mig_generated_prompt_text_{prompt_type}_{lang}"
+
+                if preview_key not in st.session_state:
+                    st.session_state[preview_key] = st.session_state.get(generated_key, "")
 
                 st.text_area(
                     f"Prompt {lang.upper()}",
-                    value=prompt_text,
                     height=260,
-                    key=f"{prompt_type}_prompt_preview_{lang}",
+                    key=preview_key,
                 )
+
+                prompt_text = st.session_state.get(preview_key, "")
 
                 if prompt_text:
                     copy_text = json.dumps(prompt_text)
@@ -386,6 +229,7 @@ strucny_popis_produktu:
                     )
                     st.session_state["mig_generated_filters_prompt_text"] = filters_prompt_text
                     st.session_state["mig_generated_filters_prompt_type"] = prompt_type
+                    st.session_state[f"{prompt_type}_filters_prompt_preview"] = filters_prompt_text
 
             show_filters_prompt = (
                 bool(st.session_state.get("mig_generated_filters_prompt_text", ""))
@@ -393,15 +237,21 @@ strucny_popis_produktu:
             )
 
             if show_filters_prompt:
-                filters_prompt_text = st.session_state["mig_generated_filters_prompt_text"]
+                preview_filters_key = f"{prompt_type}_filters_prompt_preview"
+
+                if preview_filters_key not in st.session_state:
+                    st.session_state[preview_filters_key] = st.session_state.get(
+                        "mig_generated_filters_prompt_text",
+                        "",
+                    )
 
                 st.text_area(
                     "Prompt pro filtry",
-                    value=filters_prompt_text,
                     height=300,
-                    key=f"{prompt_type}_filters_prompt_preview",
+                    key=preview_filters_key,
                 )
 
+                filters_prompt_text = st.session_state.get(preview_filters_key, "")
                 filters_copy_text = json.dumps(filters_prompt_text)
 
                 st.components.v1.html(
