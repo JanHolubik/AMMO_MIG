@@ -1,6 +1,6 @@
 from pathlib import Path
 from io import BytesIO
-import re
+
 import pandas as pd
 from docx import Document
 
@@ -10,8 +10,9 @@ TEMPLATE_DIR = Path("sablony")
 
 def make_docx_bytes(text: str) -> bytes:
     doc = Document()
-    for line in text.splitlines():
+    for line in str(text or "").splitlines():
         doc.add_paragraph(line)
+
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
@@ -27,18 +28,20 @@ def create_mig_card_row(
     product_type: str,
     description: str = "",
 ) -> pd.DataFrame:
-    price_without_vat = round(price / 1.21, 2)
+    price = float(price or 0)
+    standard_price = float(standard_price or 0)
+    price_without_vat = round(price / 1.21, 2) if price else 0
 
     row = {
-        "code": code,
+        "code": str(code or "").strip(),
         "pairCode": "",
-        "externalCode": code,
-        "name": name,
-        "ean": ean,
+        "externalCode": str(code or "").strip(),
+        "name": str(name or "").strip(),
+        "ean": str(ean or "").strip(),
         "price": price,
         "priceWithoutVat": price_without_vat,
         "standardPrice": standard_price,
-        "description": description,
+        "description": str(description or "").strip(),
         "manufacturer": "AMMO by MIG",
         "availabilityInStock": "Skladem",
         "availabilityOutOfStock": "Na dotaz",
@@ -46,7 +49,11 @@ def create_mig_card_row(
         "heurekaCategoryId": 2351,
         "zboziCategoryId": 2413,
         "googleCategoryId": 6000,
-        "itemType": product_type,
+        "itemType": str(product_type or "").strip(),
+        "filteringProperty:Použití": "",
+        "filteringProperty:Tvar štětce": "",
+        "filteringProperty:Typ štětin": "",
+        "filteringProperty:Velikost": "",
     }
 
     return pd.DataFrame([row])
@@ -57,8 +64,11 @@ def build_mig_prompt(
     product_name: str,
     product_ean: str,
     product_code: str = "",
+    lang: str = "cs",
 ) -> str:
-    template_path = PROMPT_TEMPLATE_DIR / f"{prompt_type}.txt"
+    lang = str(lang or "cs").strip().lower()
+    template_path = PROMPT_TEMPLATE_DIR / f"{prompt_type}_{lang}.txt"
+
     if not template_path.exists():
         raise FileNotFoundError(f"Šablona nenalezena: {template_path}")
 
@@ -68,39 +78,33 @@ def build_mig_prompt(
 
 --------------------------------------------------
 PRODUKT
-{product_name}
+{product_name or ""}
 
 EAN
-{product_ean}
+{product_ean or ""}
 
 CODE
-{product_code}
+{product_code or ""}
 --------------------------------------------------
 """
 
 
-def parse_ai_output_to_lang_blocks(text: str) -> dict:
-    pattern = r"\[LANG=(cs|en|sk)\]\s*(.*?)(?=\[LANG=cs\]|\[LANG=en\]|\[LANG=sk\]|\Z)"
-    matches = re.findall(pattern, text, flags=re.DOTALL | re.IGNORECASE)
-
-    out = {"cs": "", "en": "", "sk": ""}
-    for lang, content in matches:
-        out[lang.lower()] = content.strip()
-    return out
-
-
-def parse_key_value_block(block_text: str) -> dict:
-    result = {}
+def parse_key_value_block(block_text: str) -> dict[str, str]:
+    result: dict[str, str] = {}
     current_key = None
-    current_value_lines = []
+    current_value_lines: list[str] = []
 
-    for line in block_text.splitlines():
+    for raw_line in str(block_text or "").splitlines():
+        line = raw_line.rstrip()
+
         if ":" in line:
             maybe_key, maybe_value = line.split(":", 1)
             key = maybe_key.strip()
+
             if key:
                 if current_key is not None:
                     result[current_key] = "\n".join(current_value_lines).strip()
+
                 current_key = key
                 current_value_lines = [maybe_value.strip()]
                 continue
@@ -114,14 +118,20 @@ def parse_key_value_block(block_text: str) -> dict:
     return result
 
 
-def replace_placeholders_in_docx(template_path: Path, values: dict) -> str:
+def replace_placeholders_in_docx(template_path: Path, values: dict[str, str]) -> str:
+    if not template_path.exists():
+        raise FileNotFoundError(f"Šablona DOCX nenalezena: {template_path}")
+
     doc = Document(template_path)
+    normalized_values = {str(k): str(v or "") for k, v in values.items()}
 
     for paragraph in doc.paragraphs:
         full_text = "".join(run.text for run in paragraph.runs)
         new_text = full_text
-        for key, value in values.items():
-            new_text = new_text.replace("{" + key + "}", value or "")
+
+        for key, value in normalized_values.items():
+            new_text = new_text.replace("{" + key + "}", value)
+
         if new_text != full_text:
             for i in range(len(paragraph.runs) - 1, -1, -1):
                 paragraph._element.remove(paragraph.runs[i]._element)
@@ -133,14 +143,16 @@ def replace_placeholders_in_docx(template_path: Path, values: dict) -> str:
                 for paragraph in cell.paragraphs:
                     full_text = "".join(run.text for run in paragraph.runs)
                     new_text = full_text
-                    for key, value in values.items():
-                        new_text = new_text.replace("{" + key + "}", value or "")
+
+                    for key, value in normalized_values.items():
+                        new_text = new_text.replace("{" + key + "}", value)
+
                     if new_text != full_text:
                         for i in range(len(paragraph.runs) - 1, -1, -1):
                             paragraph._element.remove(paragraph.runs[i]._element)
                         paragraph.add_run(new_text)
 
-    html_lines = []
+    html_lines: list[str] = []
 
     for paragraph in doc.paragraphs:
         txt = paragraph.text.strip()
@@ -159,9 +171,7 @@ def replace_placeholders_in_docx(template_path: Path, values: dict) -> str:
     return "\n".join(html_lines)
 
 
-def build_mig_html(ai_output: str, template_kind: str, extra_values: dict | None = None) -> dict:
-    lang_blocks = parse_ai_output_to_lang_blocks(ai_output)
-
+def get_mig_template_paths(template_kind: str) -> tuple[dict[str, Path], dict[str, Path]]:
     if template_kind == "mig_paints":
         short_files = {
             "cs": TEMPLATE_DIR / "BARVA kratky popis.docx",
@@ -187,30 +197,44 @@ def build_mig_html(ai_output: str, template_kind: str, extra_values: dict | None
     else:
         raise ValueError(f"Neznámý template_kind: {template_kind}")
 
-    out = {}
+    return short_files, long_files
 
-    for lang in ["cs", "en", "sk"]:
-        values = parse_key_value_block(lang_blocks.get(lang, ""))
 
-        if extra_values:
-            values.update(extra_values)
+def build_mig_html_single_lang(
+    ai_output: str,
+    template_kind: str,
+    lang: str,
+    extra_values: dict[str, str] | None = None,
+) -> dict[str, str]:
+    lang = str(lang or "cs").strip().lower()
+    short_files, long_files = get_mig_template_paths(template_kind)
 
-        out[f"shortDescription:{lang}"] = replace_placeholders_in_docx(short_files[lang], values)
-        out[f"description:{lang}"] = replace_placeholders_in_docx(long_files[lang], values)
+    if lang not in short_files or lang not in long_files:
+        raise ValueError(f"Neplatný jazyk: {lang}")
 
-        product_name = values.get("nazev_produktu", "").strip()
-        short_desc = values.get("strucny_popis_produktu", "").strip()
+    values = parse_key_value_block(ai_output)
 
-        if product_name and short_desc.lower().startswith(product_name.lower()):
-            short_desc = short_desc[len(product_name):].strip(" -–—,:;")
+    if extra_values:
+        values.update({str(k): str(v or "") for k, v in extra_values.items()})
 
-        final_short = f"{product_name} {short_desc}".strip()
-        final_short = final_short.replace("\n", " ").replace("\r", " ")
+    out: dict[str, str] = {}
 
-        out[f"name:{lang}"] = product_name
-        out[f"seoTitle:{lang}"] = f"{product_name} | AMMO by MIG" if product_name else ""
-        out[f"xmlFeedName:{lang}"] = product_name
-        out[f"metaDescription:{lang}"] = final_short[:155] if final_short else ""
+    out[f"shortDescription:{lang}"] = replace_placeholders_in_docx(short_files[lang], values)
+    out[f"description:{lang}"] = replace_placeholders_in_docx(long_files[lang], values)
+
+    product_name = str(values.get("nazev_produktu", "")).strip()
+    short_desc = str(values.get("strucny_popis_produktu", "")).strip()
+
+    if product_name and short_desc.lower().startswith(product_name.lower()):
+        short_desc = short_desc[len(product_name):].strip(" -–—,:;")
+
+    final_short = f"{product_name} {short_desc}".strip()
+    final_short = final_short.replace("\n", " ").replace("\r", " ")
+
+    out[f"name:{lang}"] = product_name
+    out[f"seoTitle:{lang}"] = f"{product_name} | AMMO by MIG" if product_name else ""
+    out[f"xmlFeedName:{lang}"] = product_name
+    out[f"metaDescription:{lang}"] = final_short[:155] if final_short else ""
 
     return out
 
@@ -220,9 +244,15 @@ def apply_mig_output_to_csv(
     row_index: int,
     ai_output: str,
     template_kind: str,
-    extra_values: dict | None = None,
+    lang: str,
+    extra_values: dict[str, str] | None = None,
 ) -> pd.DataFrame:
-    html_map = build_mig_html(ai_output, template_kind, extra_values=extra_values)
+    html_map = build_mig_html_single_lang(
+        ai_output=ai_output,
+        template_kind=template_kind,
+        lang=lang,
+        extra_values=extra_values,
+    )
     df_out = df.copy()
 
     for col, value in html_map.items():
@@ -248,7 +278,7 @@ def apply_mig_output_to_csv(
 
     df_out = df_out.drop(
         columns=[c for c in ["name", "description", "shortDescription"] if c in df_out.columns],
-        errors="ignore"
+        errors="ignore",
     )
 
     preferred_order = [
@@ -277,6 +307,11 @@ def apply_mig_output_to_csv(
         "supplier",
         "manufacturer",
         "itemType",
+
+        "filteringProperty:Použití",
+        "filteringProperty:Tvar štětce",
+        "filteringProperty:Typ štětin",
+        "filteringProperty:Velikost",
 
         "googleCategoryIdInFeed",
         "heurekaCategoryId",

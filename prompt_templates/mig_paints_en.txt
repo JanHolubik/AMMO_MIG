@@ -1,0 +1,192 @@
+MIG / AMMO PRODUCT CONTENT ENGINE – PAINT MODE (EN ONLY)
+
+Generate content for 1 product only – modeling paint (e.g. AMMO by MIG).
+
+HTML templates already exist.
+You will never see them.
+Your task is to generate ONLY placeholder values.
+
+In this run generate ONLY English.
+Never generate Czech.
+Never generate Slovak.
+Never output any [LANG=...] blocks.
+
+---
+
+MAIN GOAL
+
+The output must be:
+- highly attractive for customers
+- understandable even for beginners
+- sales-oriented but realistic
+- practical for hobbyists
+- suitable for e-commerce
+
+The customer must quickly understand:
+- what kind of paint it is
+- what it is used for
+- its effect or character (finish, tone, coverage)
+- why it belongs in a hobby setup
+- what to combine it with
+- what advantage it brings during use
+
+The text MUST NOT feel:
+- generic
+- overly technical
+- robotic
+
+---
+
+HARD LOCK – NO EXCEPTIONS
+
+Never generate HTML  
+Never generate CSS  
+Never use HTML tags  
+Never return comments  
+Never return explanations  
+Never return anything outside defined keys  
+Every key must be filled  
+Each key must appear exactly once  
+Order of keys is mandatory  
+
+---
+
+INPUT
+
+name: {PRODUCT_NAME}  
+ean: {EAN}  
+code: {CODE}
+
+---
+
+OUTPUT FORMAT
+
+Return ONLY placeholders in this format:
+
+key: value
+
+Do NOT return any [LANG=...] blocks.  
+Do NOT return any extra text before or after.
+
+---
+
+STYLE
+
+Write like an experienced hobbyist, not a catalog.
+
+The text should feel:
+- practical
+- realistic
+- slightly “inside hobby”
+
+Use natural English (not translated Czech).
+
+---
+
+CRITICAL RULE FOR SHORT DESCRIPTION
+
+Field **strucny_popis_produktu MUST NOT start with the product name.**
+
+The product name will be added by the system separately.
+
+Start directly with:
+- product type
+- usage
+- main benefit
+
+---
+
+SHORT DESCRIPTION STYLE
+
+strucny_popis_produktu must be:
+- 1–2 sentences
+- concise
+- sales-oriented
+- natural
+- without repeating the product name
+- no filler text
+
+Recommended structure:
+product type + usage + main benefit
+
+Example:
+Acrylic model paint suitable for brush and airbrush use. Dries quickly and leaves a smooth, even finish.
+
+---
+
+DETAILED DESCRIPTION RULE
+
+podrobnejsi_popis_produktu should be:
+- longer
+- more specific
+- practical
+
+Describe:
+- color tone and character
+- behavior during application
+- coverage
+- best use cases
+- real benefit for the modeler
+
+---
+
+IMPORTANT
+
+Placeholder names MUST remain in Czech.
+
+---
+
+PLACEHOLDERS
+
+nazev_produktu:
+typ_produktu:
+doporucene_pouziti:
+hlavni_vlastnosti:
+konkretni_aplikace:
+strucne_vyhody_a_prinos_pro_zakaznika:
+doporucene_kombinace:
+prakticky_tip:
+
+strucny_popis_produktu:
+podrobnejsi_popis_produktu:
+
+vlastnost_1:
+vlastnost_2:
+vlastnost_3:
+
+vyrobce:
+objem_rozmer:
+vhodne_pro:
+specialni_vlastnosti:
+
+doporucene_pouziti_tabulka:
+vyhody:
+slabiny:
+
+obsah_produktu:
+doporucene_prislusenstvi:
+
+obrazek:
+
+---
+
+IMAGE RULE
+
+Field:
+obrazek
+
+Do NOT invent any URL.
+
+If unknown, return exactly:
+
+obrazek: obrazek
+
+---
+
+FINAL CHECK
+
+Before finishing:
+- check grammar and fluency
+- ensure natural English tone
+
+Never output this check.
