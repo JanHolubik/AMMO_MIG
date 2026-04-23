@@ -61,6 +61,15 @@ def build_mig_filters_prompt_text(product_name: str, product_ean: str, product_c
     lines.append("")
     lines.append("Tvar štětce, Typ štětin a Velikost vracej jen pokud jsou bezpečně určitelné.")
     lines.append("")
+    lines.append("Při určování filtrů hledej co nejvíce informací na oficiálním webu MIG.")
+    lines.append("Preferuj oficiální zdroj před jinými e-shopy nebo katalogy.")
+    lines.append("Oficiální web:")
+    lines.append("https://www.migjimenez.com/en/")
+    lines.append("")
+    lines.append("Zkus dohledat oficiální produktovou stránku, oficiální kategorii nebo oficiální popis produktu podle názvu, EAN nebo CODE.")
+    lines.append("Pokud oficiální zdroj jasně potvrzuje typ štětin, tvar nebo velikost, vyplň je.")
+    lines.append("Pokud to oficiální zdroj nepotvrdí dostatečně jasně, nech pole prázdné.")
+    lines.append("")
 
     for key, values in config.items():
         lines.append(key)
