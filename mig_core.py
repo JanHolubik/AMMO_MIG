@@ -50,10 +50,16 @@ def create_mig_card_row(
         "zboziCategoryId": 2413,
         "googleCategoryId": 6000,
         "itemType": str(product_type or "").strip(),
-        "filteringProperty:Použití": "",
+        "filteringProperty:Použití - štětec": "",
         "filteringProperty:Tvar štětce": "",
         "filteringProperty:Typ štětin": "",
-        "filteringProperty:Velikost": "",
+        "filteringProperty:Velikost štětců": "",
+        "filteringProperty:Barva": "",
+        "filteringProperty:Druh barvy": "",
+        "filteringProperty:Příslušenství k barvám": "",
+        "filteringProperty:Typ spreje": "",
+        "filteringProperty:Tón barvy": "",
+        "filteringProperty:Vlastnost barvy": "",
     }
 
     return pd.DataFrame([row])
@@ -308,10 +314,16 @@ def apply_mig_output_to_csv(
         "manufacturer",
         "itemType",
 
-        "filteringProperty:Použití",
+        "filteringProperty:Použití - štětec",
         "filteringProperty:Tvar štětce",
         "filteringProperty:Typ štětin",
-        "filteringProperty:Velikost",
+        "filteringProperty:Velikost štětců",
+        "filteringProperty:Barva",
+        "filteringProperty:Druh barvy",
+        "filteringProperty:Příslušenství k barvám",
+        "filteringProperty:Typ spreje",
+        "filteringProperty:Tón barvy",
+        "filteringProperty:Vlastnost barvy",
 
         "googleCategoryIdInFeed",
         "heurekaCategoryId",
